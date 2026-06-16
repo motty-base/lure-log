@@ -1,0 +1,57 @@
+{
+  "records": [
+    {
+      "id": 1781534348895,
+      "videoUrl": null,
+      "datetime": "2026/06/15 23:39",
+      "detail": {
+        "type": "スプーン",
+        "maker": "ロデオクラフト",
+        "lureName": "ノアボス",
+        "color": "アカキン",
+        "weight": "1.8",
+        "spot": "すそパ",
+        "memo": ""
+      }
+    },
+    {
+      "id": 1781534343610,
+      "videoUrl": null,
+      "datetime": "2026/06/15 23:39",
+      "detail": {
+        "type": "スプーン",
+        "maker": "ロデオクラフト",
+        "lureName": "ノア",
+        "color": "白",
+        "weight": "1.8",
+        "spot": "すそパ",
+        "memo": ""
+      }
+    },
+    {
+      "id": 1781534337526,
+      "videoUrl": null,
+      "datetime": "2026/06/15 23:38",
+      "detail": {
+        "type": "スプーン",
+        "maker": "ロデオクラフト",
+        "lureName": "ノアボス",
+        "color": "アカキン",
+        "weight": "1.8",
+        "spot": "すそパ",
+        "memo": ""
+      }
+    }
+  ],
+  "lureTypes": [
+    "スプーン",
+    "クランク",
+    "ミノー",
+    "不明"
+  ],
+  "makers": [
+    "ロデオクラフト",
+    "ベルベットアーツ",
+    "不明"
+  ]
+}
