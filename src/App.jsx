@@ -473,42 +473,40 @@ export default function LureLogger() {
                   <div style={{marginTop:12}}>データがありません</div>
                   <div style={{fontSize:13,marginTop:8}}>記録してルアー情報を登録すると<br/>ここに表示されます</div>
                 </div>
-              : lureStats.map((l,i)=>(
-                <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,marginBottom:10,padding:"14px 16px"}}>
-                  <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:4}}>
-                        <span style={{background:`${C.accent}22`,color:C.accent,borderRadius:5,padding:"3px 8px",fontSize:12,fontWeight:700}}>{l.type}</span>
-                        <span style={{fontSize:13,color:C.muted}}>{l.maker}</span>
-                      </div>
-                      <div style={{fontSize:15,fontWeight:700,color:C.text,marginBottom:4}}>{l.lureName||"名称不明"}</div>
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-                        {l.weight&&<span style={{fontSize:12,color:C.muted}}>{l.weight}g</span>}
-                        {l.color&&<span style={{fontSize:12,color:C.muted}}>🎨 {l.color}</span>}
-                      </div>
-                      <button onClick={()=>openLureEdit(l)}
-                        style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"5px 12px",fontSize:12,color:C.muted,cursor:"pointer"}}>
-                        ✏️ 編集
-                      </button>
+              : lureStats.map((l,i)=>{
+                const spotEntries = Object.entries(l.counts)
+                  .filter(([spot])=>!filterSpot||spot===filterSpot)
+                  .sort((a,b)=>b[1]-a[1]);
+                return (
+                <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,marginBottom:8,padding:"10px 12px"}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                    <div style={{flex:1,minWidth:0,display:"flex",alignItems:"baseline",gap:6,flexWrap:"wrap"}}>
+                      <span style={{background:`${C.accent}22`,color:C.accent,borderRadius:5,padding:"2px 7px",fontSize:11,fontWeight:700,flexShrink:0}}>{l.type}</span>
+                      <span style={{fontSize:12,color:C.muted,flexShrink:0}}>{l.maker}</span>
+                      <span style={{fontSize:14,fontWeight:700,color:C.text}}>{l.lureName||"名称不明"}</span>
+                      {l.weight&&<span style={{fontSize:12,color:C.muted,flexShrink:0}}>{l.weight}g</span>}
+                      {l.color&&<span style={{fontSize:12,color:C.muted,flexShrink:0}}>🎨{l.color}</span>}
                     </div>
-                    <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:20,padding:"6px 14px",fontSize:18,fontWeight:700,color:C.gold,flexShrink:0,textAlign:"center",marginLeft:8}}>
+                    <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:16,padding:"3px 10px",fontSize:15,fontWeight:700,color:C.gold,flexShrink:0,textAlign:"center"}}>
                       {filterSpot?(l.counts[filterSpot]||0):l.total}
-                      <div style={{fontSize:10,fontWeight:400,color:C.muted}}>匹</div>
+                      <span style={{fontSize:9,fontWeight:400,color:C.muted,marginLeft:2}}>匹</span>
                     </div>
                   </div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {Object.entries(l.counts)
-                      .filter(([spot])=>!filterSpot||spot===filterSpot)
-                      .sort((a,b)=>b[1]-a[1])
-                      .map(([spot,cnt])=>(
-                        <span key={spot} style={{background:C.surface,borderRadius:5,padding:"3px 10px",fontSize:12,color:C.muted}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
+                    <div style={{flex:1,minWidth:0,display:"flex",gap:4,overflowX:"auto",whiteSpace:"nowrap",paddingBottom:2}}>
+                      {spotEntries.map(([spot,cnt])=>(
+                        <span key={spot} style={{flexShrink:0,background:C.surface,borderRadius:5,padding:"2px 8px",fontSize:11,color:C.muted}}>
                           📍{spot} <span style={{color:C.gold,fontWeight:700}}>{cnt}</span>
                         </span>
-                      ))
-                    }
+                      ))}
+                    </div>
+                    <button onClick={()=>openLureEdit(l)}
+                      style={{flexShrink:0,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 8px",fontSize:11,color:C.muted,cursor:"pointer"}}>
+                      ✏️
+                    </button>
                   </div>
                 </div>
-              ))
+              );})
             }
           </div>
         )}
