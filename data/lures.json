@@ -1,6 +1,20 @@
 {
   "records": [
     {
+      "id": 1781878819498,
+      "videoUrl": null,
+      "datetime": "2026/06/19 23:20",
+      "detail": {
+        "type": "クランク",
+        "maker": "ロデオクラフト",
+        "lureName": "モカ",
+        "color": "サチオの",
+        "weight": "",
+        "spot": "すそパ",
+        "memo": ""
+      }
+    },
+    {
       "id": 1781534348895,
       "videoUrl": null,
       "datetime": "2026/06/15 23:39",

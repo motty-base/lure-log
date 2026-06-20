@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { loadData, saveData } from "./firebase";
 
 function formatDate(d) {
   return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
@@ -14,26 +15,11 @@ const INIT_MAKERS = ["ロデオクラフト","ベルベットアーツ","不明"
 const EMPTY_DETAIL = { type:"", maker:"", lureName:"", color:"", weight:"", spot:"", memo:"" };
 
 async function apiLoad() {
-  try {
-    const res = await fetch('/api/data')
-    if (!res.ok) throw new Error('load failed')
-    return await res.json()
-  } catch(e) {
-    console.error('load error', e)
-    return null
-  }
+  return await loadData();
 }
 
 async function apiSave(data) {
-  try {
-    await fetch('/api/data', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    })
-  } catch(e) {
-    console.error('save error', e)
-  }
+  await saveData(data);
 }
 
 function getCandidates(records, key, filters={}) {
