@@ -102,6 +102,7 @@ export default function LureLogger() {
   const [filterMaker, setFilterMaker] = useState("");
   const [filterSpot, setFilterSpot] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [listTab, setListTab] = useState("pending"); // "pending" | "done"
 
   // ルアー編集用
   const [lureEditTarget, setLureEditTarget] = useState(null); // 編集中のlureKey
@@ -111,6 +112,7 @@ export default function LureLogger() {
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
   const videoPreviewRef = useRef(null);
+  const streamRef = useRef(null);
 
   useEffect(() => {
     apiLoad().then(data => {
@@ -132,6 +134,16 @@ export default function LureLogger() {
     });
   }, [records, lureTypes, makers, loaded]);
 
+  // タブを「記録」以外に切り替えたらカメラを解放
+  useEffect(() => {
+    if (tab !== "record") {
+      if(isRecording) { mediaRecorderRef.current?.stop(); setIsRecording(false); }
+      releaseCamera();
+      setVideoUrl(null);
+      setRecordingSec(0);
+    }
+  }, [tab]);
+
   function setDetailField(key, value) {
     setDetail(d => {
       const next = {...d,[key]:value};
@@ -146,23 +158,34 @@ export default function LureLogger() {
 
   const lureNameCandidates = detail.type&&detail.maker ? getCandidates(records,"lureName",{type:detail.type,maker:detail.maker}) : [];
   const colorCandidates = detail.lureName ? getCandidates(records,"color",{type:detail.type,maker:detail.maker,lureName:detail.lureName}) : [];
-  const weightCandidates = detail.type==="スプーン"&&detail.lureName ? getCandidates(records,"weight",{type:"スプーン",maker:detail.maker,lureName:detail.lureName}) : [];
+  const weightCandidates = detail.lureName ? getCandidates(records,"weight",{type:detail.type,maker:detail.maker,lureName:detail.lureName}).filter(w=>w&&Number(w)>0) : [];
   const spotCandidates = getCandidates(records,"spot");
   const allSpots = [...new Set(records.filter(r=>r.detail?.spot).map(r=>r.detail.spot))];
-  const isSpoon = detail.type==="スプーン";
+
+  function releaseCamera(delay=0) {
+    setTimeout(()=>{
+      if(streamRef.current) {
+        streamRef.current.getTracks().forEach(t=>t.stop());
+        streamRef.current = null;
+      }
+      if(videoPreviewRef.current) videoPreviewRef.current.srcObject = null;
+    }, delay);
+    clearInterval(timerRef.current);
+  }
 
   async function startRecording() {
     setError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:true});
+      streamRef.current = stream;
       if(videoPreviewRef.current){videoPreviewRef.current.srcObject=stream;videoPreviewRef.current.play();}
       chunksRef.current=[];
       const mr = new MediaRecorder(stream);
       mr.ondataavailable=e=>{if(e.data.size>0)chunksRef.current.push(e.data);};
       mr.onstop=()=>{
-        setVideoUrl(URL.createObjectURL(new Blob(chunksRef.current,{type:"video/mp4"})));
-        stream.getTracks().forEach(t=>t.stop());
-        if(videoPreviewRef.current)videoPreviewRef.current.srcObject=null;
+        const blob = new Blob(chunksRef.current,{type:"video/mp4"});
+        setVideoUrl(URL.createObjectURL(blob));
+        releaseCamera(300); // 300ms遅らせてから確実に解放
       };
       mr.start(); mediaRecorderRef.current=mr;
       setIsRecording(true); setRecordingSec(0); setVideoUrl(null);
@@ -170,7 +193,29 @@ export default function LureLogger() {
     } catch { setError("カメラ・マイクへのアクセスを許可してください"); }
   }
 
-  function stopRecording() { mediaRecorderRef.current?.stop(); setIsRecording(false); clearInterval(timerRef.current); }
+  function stopRecording() {
+    if(mediaRecorderRef.current) mediaRecorderRef.current.stop();
+    setIsRecording(false);
+  }
+
+  async function saveToPhotoLibrary(url) {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const file = new File([blob], `lurelog_${formatDate(new Date()).replace(/[/ :]/g,"-")}.mp4`, {type:"video/mp4"});
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})) {
+        await navigator.share({files:[file], title:"LURE LOG 動画"});
+      } else {
+        // フォールバック：通常ダウンロード
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = file.name;
+        a.click();
+      }
+    } catch(e) {
+      if(e.name !== "AbortError") setError("保存に失敗しました。ダウンロードを試みます。");
+    }
+  }
 
   function saveRecord() {
     if(!videoUrl) return;
@@ -270,14 +315,12 @@ export default function LureLogger() {
               style={{width:"100%",background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}}/>
           </div>
 
-          {isEditSpoon&&(
-            <div style={{marginBottom:16}}>
-              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>重さ (g)</div>
-              <input value={lureEdit.weight} onChange={e=>setLureEdit(p=>({...p,weight:e.target.value}))}
-                type="number" step="0.1"
-                style={{width:"100%",background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}}/>
-            </div>
-          )}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>重さ (g)　※不要な場合は0または空欄</div>
+            <input value={lureEdit.weight} onChange={e=>setLureEdit(p=>({...p,weight:e.target.value}))}
+              type="number" step="0.1"
+              style={{width:"100%",background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"10px 12px",color:C.text,fontSize:14,outline:"none",boxSizing:"border-box"}}/>
+          </div>
 
           <div style={{marginBottom:32}}>
             <div style={{fontSize:12,color:C.muted,marginBottom:8}}>カラー</div>
@@ -307,7 +350,15 @@ export default function LureLogger() {
             ? <video src={rec.videoUrl} controls playsInline style={{width:"100%",maxHeight:200,borderRadius:12,background:"#000",display:"block",marginBottom:12}}/>
             : <div style={{background:C.card,borderRadius:12,padding:"12px 16px",marginBottom:12,fontSize:12,color:C.muted,textAlign:"center"}}>📹 動画はセッション終了後に消えます</div>
           }
-          <div style={{fontSize:12,color:C.muted,marginBottom:20}}>🕐 {rec?.datetime}</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:20}}>
+            <div style={{marginBottom:4}}>🕐 記録日時</div>
+            <input type="datetime-local" value={rec?.datetime ? (() => { const d = rec.datetime; const [date,time] = d.split(' '); const [y,m,day] = date.split('/'); return `${y}-${m}-${day}T${time}`; })() : ''} onChange={e=>{
+              const v = e.target.value;
+              if(!v) return;
+              const dt = new Date(v);
+              setRecords(prev=>prev.map(r=>r.id===detailTarget?{...r,datetime:formatDate(dt)}:r));
+            }} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",color:C.text,fontSize:13,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+          </div>
 
           <SelectOrInput label="ルアータイプ" options={lureTypes} value={detail.type} onChange={addType} placeholder="例：ペレット"/>
           {detail.type&&<SelectOrInput label="メーカー" options={makers} value={detail.maker} onChange={addMaker} placeholder="例：スミス"/>}
@@ -315,11 +366,11 @@ export default function LureLogger() {
             <CandidateInput label="ルアー名" candidates={lureNameCandidates} value={detail.lureName}
               onChange={v=>setDetailField("lureName",v)} placeholder="例：ミュー、リッジ35F"/>
           )}
-          {isSpoon&&detail.lureName&&(
-            <CandidateInput label="重さ (g)" candidates={weightCandidates} value={detail.weight}
+          {detail.lureName&&(
+            <CandidateInput label="重さ (g)　※不要な場合は0または空欄" candidates={weightCandidates} value={detail.weight}
               onChange={v=>setDetailField("weight",v)} placeholder="例：3.0" type="number" step="0.1"/>
           )}
-          {detail.lureName&&(isSpoon?detail.weight:true)&&(
+          {detail.lureName&&(
             <CandidateInput label="カラー" candidates={colorCandidates} value={detail.color}
               onChange={v=>setDetailField("color",v)} placeholder="例：ゴールドオレンジ"/>
           )}
@@ -396,11 +447,14 @@ export default function LureLogger() {
               <>
                 <video src={videoUrl} controls playsInline style={{width:"100%",maxHeight:300,borderRadius:12,background:"#000",display:"block"}}/>
                 <div style={{display:"flex",gap:10}}>
-                  <button onClick={()=>{setVideoUrl(null);setRecordingSec(0);}} style={{flex:1,background:"transparent",border:`1px solid ${C.border}`,borderRadius:12,padding:14,fontSize:14,color:C.muted,cursor:"pointer"}}>撮り直す</button>
+                  <button onClick={()=>{releaseCamera();setVideoUrl(null);setRecordingSec(0);}} style={{flex:1,background:"transparent",border:`1px solid ${C.border}`,borderRadius:12,padding:14,fontSize:14,color:C.muted,cursor:"pointer"}}>撮り直す</button>
                   <button onClick={saveRecord} disabled={saved} style={{flex:2,background:saved?C.border:C.accent,border:"none",borderRadius:12,padding:14,fontSize:15,fontWeight:700,color:saved?C.muted:"#071020",cursor:saved?"not-allowed":"pointer"}}>
                     {saved?"✅ 記録しました！次を撮影できます":"記録する"}
                   </button>
                 </div>
+                <button onClick={()=>saveToPhotoLibrary(videoUrl)} style={{width:"100%",background:`${C.gold}22`,border:`1px solid ${C.gold}55`,borderRadius:12,padding:12,fontSize:14,fontWeight:700,color:C.gold,cursor:"pointer"}}>
+                  📥 カメラロールに保存
+                </button>
               </>
             )}
             <div style={{fontSize:12,color:C.muted,textAlign:"center",lineHeight:1.7}}>💡 魚をリリース → ルアーを持って録画 →<br/>「ミュー3g！」とひと言 → 停止</div>
@@ -409,37 +463,67 @@ export default function LureLogger() {
 
         {tab==="list"&&(
           <div>
-            {records.length===0
-              ? <div style={{textAlign:"center",padding:"60px 20px",color:C.muted}}><div style={{fontSize:48}}>🎣</div><div style={{marginTop:12}}>まだ記録がありません</div></div>
-              : records.map(rec=>(
-                <div key={rec.id} style={{background:C.card,border:`1px solid ${rec.detail?.type?C.border:C.gold+"55"}`,borderRadius:12,marginBottom:12,overflow:"hidden"}}>
-                  {rec.videoUrl
-                    ? <video src={rec.videoUrl} controls playsInline style={{width:"100%",maxHeight:180,objectFit:"cover",display:"block",background:"#000"}}/>
-                    : <div style={{background:C.surface,padding:"8px 14px",fontSize:11,color:C.muted}}>📹 動画はセッション終了後に消えます</div>
-                  }
-                  <div style={{padding:"12px 14px"}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                      <div style={{fontSize:13,color:C.accent,fontWeight:600}}>🕐 {rec.datetime}</div>
-                      <button onClick={()=>deleteRecord(rec.id)} style={{background:"transparent",border:"none",fontSize:18,cursor:"pointer",color:C.muted}}>🗑</button>
-                    </div>
-                    {rec.detail?.type?(
-                      <div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:8}}>
-                          {[rec.detail.type,rec.detail.maker,rec.detail.lureName,rec.detail.weight?rec.detail.weight+"g":"",rec.detail.color,rec.detail.spot].filter(Boolean).map((v,i)=>(
-                            <span key={i} style={{background:C.surface,borderRadius:5,padding:"3px 8px",fontSize:12,color:C.muted}}>{v}</span>
-                          ))}
-                        </div>
-                        <button onClick={()=>openDetail(rec)} style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 14px",fontSize:12,color:C.muted,cursor:"pointer"}}>編集</button>
+            {/* サブタブ */}
+            <div style={{display:"flex",borderBottom:`1px solid ${C.border}`,marginBottom:12}}>
+              {[["pending","📝 登録中"],["done","📋 記録一覧"]].map(([key,label])=>(
+                <button key={key} onClick={()=>setListTab(key)}
+                  style={{flex:1,padding:"10px 0",background:"transparent",border:"none",borderBottom:listTab===key?`2px solid ${C.accent}`:"2px solid transparent",marginBottom:-1,color:listTab===key?C.accent:C.muted,fontSize:13,cursor:"pointer",fontWeight:listTab===key?700:400}}>
+                  {label}
+                  {key==="pending"&&records.filter(r=>!r.detail?.type).length>0&&(
+                    <span style={{marginLeft:6,background:C.gold,borderRadius:10,padding:"1px 7px",fontSize:11,color:"#071020",fontWeight:700}}>
+                      {records.filter(r=>!r.detail?.type).length}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* 登録中タブ：動画あり・ルアー未登録 */}
+            {listTab==="pending"&&(()=>{
+              const pending = records.filter(r=>!r.detail?.type);
+              return pending.length===0
+                ? <div style={{textAlign:"center",padding:"60px 20px",color:C.muted}}><div style={{fontSize:48}}>✅</div><div style={{marginTop:12}}>登録待ちの記録はありません</div></div>
+                : pending.map(rec=>(
+                  <div key={rec.id} style={{background:C.card,border:`1px solid ${C.gold}55`,borderRadius:12,marginBottom:10,overflow:"hidden"}}>
+                    {rec.videoUrl
+                      ? <video src={rec.videoUrl} controls playsInline style={{width:"100%",maxHeight:180,objectFit:"cover",display:"block",background:"#000"}}/>
+                      : <div style={{background:C.surface,padding:"8px 14px",fontSize:11,color:C.muted}}>📹 動画はセッション終了後に消えます</div>
+                    }
+                    <div style={{padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                      <div style={{fontSize:12,color:C.accent}}>🕐 {rec.datetime}</div>
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>openDetail(rec)} style={{background:`${C.gold}22`,border:`1px solid ${C.gold}55`,borderRadius:8,padding:"6px 14px",fontSize:13,fontWeight:700,color:C.gold,cursor:"pointer"}}>
+                          📝 登録する
+                        </button>
+                        <button onClick={()=>deleteRecord(rec.id)} style={{background:"transparent",border:"none",fontSize:18,cursor:"pointer",color:C.muted}}>🗑</button>
                       </div>
-                    ):(
-                      <button onClick={()=>openDetail(rec)} style={{width:"100%",background:`${C.gold}22`,border:`1px solid ${C.gold}55`,borderRadius:10,padding:"10px",fontSize:14,fontWeight:700,color:C.gold,cursor:"pointer"}}>
-                        📝 ルアー情報を登録する
-                      </button>
-                    )}
+                    </div>
                   </div>
-                </div>
-              ))
-            }
+                ));
+            })()}
+
+            {/* 記録一覧タブ：ルアー登録済み・1行表示 */}
+            {listTab==="done"&&(()=>{
+              const done = records.filter(r=>r.detail?.type);
+              return done.length===0
+                ? <div style={{textAlign:"center",padding:"60px 20px",color:C.muted}}><div style={{fontSize:48}}>🎣</div><div style={{marginTop:12}}>登録済みの記録はありません</div></div>
+                : done.map(rec=>(
+                  <div key={rec.id} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:6,padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"baseline",gap:5,flexWrap:"wrap"}}>
+                        <span style={{fontSize:11,color:C.muted,flexShrink:0}}>{rec.datetime}</span>
+                        <span style={{background:`${C.accent}22`,color:C.accent,borderRadius:4,padding:"1px 6px",fontSize:11,fontWeight:700,flexShrink:0}}>{rec.detail.type}</span>
+                        <span style={{fontSize:13,fontWeight:700,color:C.text}}>{rec.detail.lureName||"名称不明"}</span>
+                        {rec.detail.weight&&Number(rec.detail.weight)>0&&<span style={{fontSize:11,color:C.muted,flexShrink:0}}>{rec.detail.weight}g</span>}
+                        {rec.detail.color&&<span style={{fontSize:11,color:C.muted,flexShrink:0}}>🎨{rec.detail.color}</span>}
+                        {rec.detail.spot&&<span style={{fontSize:11,color:C.muted,flexShrink:0}}>📍{rec.detail.spot}</span>}
+                      </div>
+                    </div>
+                    <button onClick={()=>openDetail(rec)} style={{flexShrink:0,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 8px",fontSize:11,color:C.muted,cursor:"pointer"}}>✏️</button>
+                    <button onClick={()=>deleteRecord(rec.id)} style={{flexShrink:0,background:"transparent",border:"none",fontSize:16,cursor:"pointer",color:C.muted}}>🗑</button>
+                  </div>
+                ));
+            })()}
           </div>
         )}
 
@@ -474,37 +558,24 @@ export default function LureLogger() {
                   <div style={{fontSize:13,marginTop:8}}>記録してルアー情報を登録すると<br/>ここに表示されます</div>
                 </div>
               : lureStats.map((l,i)=>{
-                const spotEntries = Object.entries(l.counts)
-                  .filter(([spot])=>!filterSpot||spot===filterSpot)
-                  .sort((a,b)=>b[1]-a[1]);
+                const topSpot = Object.entries(l.counts).sort((a,b)=>b[1]-a[1])[0];
                 return (
-                <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,marginBottom:8,padding:"10px 12px"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                    <div style={{flex:1,minWidth:0,display:"flex",alignItems:"baseline",gap:6,flexWrap:"wrap"}}>
-                      <span style={{background:`${C.accent}22`,color:C.accent,borderRadius:5,padding:"2px 7px",fontSize:11,fontWeight:700,flexShrink:0}}>{l.type}</span>
-                      <span style={{fontSize:12,color:C.muted,flexShrink:0}}>{l.maker}</span>
-                      <span style={{fontSize:14,fontWeight:700,color:C.text}}>{l.lureName||"名称不明"}</span>
-                      {l.weight&&<span style={{fontSize:12,color:C.muted,flexShrink:0}}>{l.weight}g</span>}
-                      {l.color&&<span style={{fontSize:12,color:C.muted,flexShrink:0}}>🎨{l.color}</span>}
-                    </div>
-                    <div style={{background:`${C.gold}22`,border:`1px solid ${C.gold}44`,borderRadius:16,padding:"3px 10px",fontSize:15,fontWeight:700,color:C.gold,flexShrink:0,textAlign:"center"}}>
-                      {filterSpot?(l.counts[filterSpot]||0):l.total}
-                      <span style={{fontSize:9,fontWeight:400,color:C.muted,marginLeft:2}}>匹</span>
-                    </div>
+                <div key={i} style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,marginBottom:5,padding:"7px 10px",display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{flex:1,minWidth:0,display:"flex",alignItems:"baseline",gap:5,flexWrap:"wrap"}}>
+                    <span style={{background:`${C.accent}22`,color:C.accent,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,flexShrink:0}}>{l.type}</span>
+                    <span style={{fontSize:13,fontWeight:700,color:C.text,flexShrink:0}}>{l.lureName||"名称不明"}</span>
+                    {l.weight&&<span style={{fontSize:11,color:C.muted,flexShrink:0}}>{l.weight}g</span>}
+                    {l.color&&<span style={{fontSize:11,color:C.muted,flexShrink:0}}>🎨{l.color}</span>}
+                    {topSpot&&!filterSpot&&<span style={{fontSize:11,color:C.muted,flexShrink:0}}>📍{topSpot[0]}</span>}
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
-                    <div style={{flex:1,minWidth:0,display:"flex",gap:4,overflowX:"auto",whiteSpace:"nowrap",paddingBottom:2}}>
-                      {spotEntries.map(([spot,cnt])=>(
-                        <span key={spot} style={{flexShrink:0,background:C.surface,borderRadius:5,padding:"2px 8px",fontSize:11,color:C.muted}}>
-                          📍{spot} <span style={{color:C.gold,fontWeight:700}}>{cnt}</span>
-                        </span>
-                      ))}
-                    </div>
-                    <button onClick={()=>openLureEdit(l)}
-                      style={{flexShrink:0,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 8px",fontSize:11,color:C.muted,cursor:"pointer"}}>
-                      ✏️
-                    </button>
+                  <div style={{flexShrink:0,fontSize:14,fontWeight:700,color:C.gold,minWidth:36,textAlign:"right"}}>
+                    {filterSpot?(l.counts[filterSpot]||0):l.total}
+                    <span style={{fontSize:9,color:C.muted,marginLeft:1}}>匹</span>
                   </div>
+                  <button onClick={()=>openLureEdit(l)}
+                    style={{flexShrink:0,background:"transparent",border:`1px solid ${C.border}`,borderRadius:6,padding:"3px 7px",fontSize:11,color:C.muted,cursor:"pointer"}}>
+                    ✏️
+                  </button>
                 </div>
               );})
             }
